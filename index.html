@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prenotazione Mensa Aziendale</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --dipendente-color: #4e73df;
+            --admin-color: #1cc88a;
+            --secondary-color: #858796;
+        }
+        body {
+            background-color: #f8f9fc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--dipendente-color) 0%, var(--admin-color) 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: bold;
+        }
+        .dipendente-section .card-header {
+            background-color: var(--dipendente-color);
+            color: white;
+        }
+        .admin-section .card-header {
+            background-color: var(--admin-color);
+            color: white;
+        }
+        .nav-pills .nav-link.active {
+            background-color: var(--dipendente-color);
+        }
+        .admin-btn {
+            background-color: var(--admin-color);
+            border: none;
+        }
+        .menu-item {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .menu-item:hover {
+            background-color: #f1f1f1;
+        }
+        .menu-item.selected {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .menu-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .day-selector {
+            margin-bottom: 20px;
+        }
+        .pizza-flavor {
+            display: none;
+            margin-top: 10px;
+        }
+        .whatsapp-btn {
+            background-color: #25D366;
+            color: white;
+        }
+        .hidden {
+            display: none;
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .user-info {
+            color: white;
+            margin-right: 15px;
+        }
+        #adminDashboard {
+            display: none;
+        }
+        .stats-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            margin-bottom: 20px;
+        }
+        .stats-card.primary {
+            background-color: var(--dipendente-color);
+        }
+        .stats-card.success {
+            background-color: var(--admin-color);
+        }
+        .stats-card.warning {
+            background-color: #f6c23e;
+        }
+    </style>
+</head>
+<body>
+    <!-- Schermata di Login/Registrazione -->
+    <div id="authScreen">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-6 login-container">
+                    <div class="card">
+                        <div class="card-header text-center">
+                            <h4><i class="fas fa-utensils me-2"></i>Accesso Mensa Aziendale</h4>
+                        </div>
+                        <div class="card-body">
+                            <ul class="nav nav-pills mb-3 justify-content-center" id="authTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="login-tab" data-bs-toggle="pill" data-bs-target="#login" type="button" role="tab">Login</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="register-tab" data-bs-toggle="pill" data-bs-target="#register" type="button" role="tab">Registrazione</button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content" id="authTabsContent">
+                                <!-- Login -->
+                                <div class="tab-pane fade show active" id="login" role="tabpanel">
+                                    <div class="mb-3">
+                                        <label for="loginEmail" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="loginEmail" placeholder="nome@azienda.com">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="loginPassword" class="form-label">Password</label>
+                                        <input type="password" class="form-control" id="loginPassword" placeholder="Password">
+                                    </div>
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="adminLogin">
+                                        <label class="form-check-label" for="adminLogin">Accesso come Amministratore</label>
+                                    </div>
+                                    <button id="loginBtn" class="btn btn-primary w-100">Accedi</button>
+                                </div>
+                                
+                                <!-- Registrazione -->
+                                <div class="tab-pane fade" id="register" role="tabpanel">
+                                    <div class="mb-3">
+                                        <label for="registerName" class="form-label">Nome e Cognome</label>
+                                        <input type="text" class="form-control" id="registerName" placeholder="Mario Rossi">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="registerEmail" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="registerEmail" placeholder="nome@azienda.com">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="registerPassword" class="form-label">Password</label>
+                                        <input type="password" class="form-control" id="registerPassword" placeholder="Password">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="registerDepartment" class="form-label">Reparto</label>
+                                        <select class="form-select" id="registerDepartment">
+                                            <option value="">Seleziona reparto</option>
+                                            <option value="Amministrazione">Amministrazione</option>
+                                            <option value="Produzione">Produzione</option>
+                                            <option value="Vendite">Vendite</option>
+                                            <option value="IT">IT</option>
+                                            <option value="Risorse Umane">Risorse Umane</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="celiacCheck">
+                                        <label class="form-check-label" for="celiacCheck">Richiedo menu celiachio</label>
+                                    </div>
+                                    <button id="registerBtn" class="btn btn-success w-100">Registrati</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Applicazione principale (nascosta inizialmente) -->
+    <div id="appContainer" class="hidden">
+        <div class="header text-center">
+            <div class="d-flex justify-content-between align-items-center px-4">
+                <h1><i class="fas fa-utensils me-2"></i>Prenotazione Mensa Aziendale</h1>
+                <div class="d-flex align-items-center">
+                    <span class="user-info" id="userInfo">Utente: </span>
+                    <button id="logoutBtn" class="btn btn-sm btn-light"><i class="fas fa-sign-out-alt me-1"></i>Logout</button>
+                </div>
+            </div>
+            <p class="lead">Sistema di prenotazione pasti dal lunedì al venerdì</p>
+        </div>
+
+        <div class="container">
+            <ul class="nav nav-pills mb-4 justify-content-center" id="pills-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pills-dipendente-tab" data-bs-toggle="pill" data-bs-target="#pills-dipendente" type="button" role="tab">Area Dipendenti</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-admin-tab" data-bs-toggle="pill" data-bs-target="#pills-admin" type="button" role="tab">Area Amministratore</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="pills-tabContent">
+                <!-- AREA DIPENDENTI -->
+                <div class="tab-pane fade show active dipendente-section" id="pills-dipendente" role="tabpanel">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0"><i class="fas fa-calendar-alt me-2"></i>Seleziona Giorno</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="day-selector">
+                                        <div class="btn-group" role="group">
+                                            <button type="button" class="btn btn-outline-primary day-btn" data-day="lun">Lunedì</button>
+                                            <button type="button" class="btn btn-outline-primary day-btn" data-day="mar">Martedì</button>
+                                            <button type="button" class="btn btn-outline-primary day-btn" data-day="mer">Mercoledì</button>
+                                            <button type="button" class="btn btn-outline-primary day-btn" data-day="gio">Giovedì</button>
+                                            <button type="button" class="btn btn-outline-primary day-btn" data-day="ven">Venerdì</button>
+                                        </div>
+                                    </div>
+                                    <div class="selected-day alert alert-info mt-3 hidden">
+                                        Hai selezionato: <strong id="current-day">nessun giorno</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0"><i class="fas fa-list me-2"></i>Menu del Giorno</h5>
+                                </div>
+                                <div class="card-body">
+                                    <h6>Primi Piatti</h6>
+                                    <div class="menu-option">
+                                        <div class="menu-item" data-type="primo" data-code="A">
+                                            <strong>A</strong> - Pasta al pomodoro
+                                        </div>
+                                        <div class="menu-item" data-type="primo" data-code="B">
+                                            <strong>B</strong> - Risotto ai funghi
+                                        </div>
+                                    </div>
+
+                                    <h6 class="mt-3">Secondi Piatti</h6>
+                                    <div class="menu-option">
+                                        <div class="menu-item" data-type="secondo" data-code="E">
+                                            <strong>E</strong> - Pollo alla griglia
+                                        </div>
+                                        <div class="menu-item" data-type="secondo" data-code="F">
+                                            <strong>F</strong> - Salmone al forno
+                                        </div>
+                                    </div>
+
+                                    <h6 class="mt-3">Contorni</h6>
+                                    <div class="menu-option">
+                                        <div class="menu-item" data-type="contorno" data-code="G">
+                                            <strong>G</strong> - Insalata mista
+                                        </div>
+                                        <div class="menu-item" data-type="contorno" data-code="H">
+                                            <strong>H</strong> - Verdure grigliate
+                                        </div>
+                                    </div>
+
+                                    <h6 class="mt-3">Altre Opzioni</h6>
+                                    <div class="menu-option">
+                                        <div class="menu-item" data-type="unico" data-code="T">
+                                            <strong>T</strong> - Piatto Unico (non abbinabile con altre opzioni)
+                                        </div>
+                                        <div class="menu-item" data-type="insalata" data-code="S">
+                                            <strong>S</strong> - Insalata (non abbinabile con altre opzioni)
+                                        </div>
+                                        <div class="menu-item" data-type="alternativo" data-code="L">
+                                            <strong>L</strong> - Piatto Alternativo
+                                        </div>
+                                        <div class="menu-item" data-type="frutta" data-code="P">
+                                            <strong>P</strong> - Frutta
+                                        </div>
+                                        <div class="menu-item" data-type="pizza" data-code="Q">
+                                            <strong>Q</strong> - Pizza (non abbinabile con altre opzioni)
+                                            <div class="pizza-flavor mt-2">
+                                                <select class="form-select" id="pizza-gusto">
+                                                    <option value="margherita">Margherita</option>
+                                                    <option value="diavola">Diavola</option>
+                                                    <option value="quattro_stagioni">Quattro Stagioni</option>
+                                                    <option value="vegetariana">Vegetariana</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-check mt-3">
+                                        <input class="form-check-input" type="checkbox" id="celiaco">
+                                        <label class="form-check-label" for="celiaco">
+                                            Opzione per celiaci
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0"><i class="fas fa-check-circle me-2"></i>Riepilogo Prenotazione</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-warning hidden" id="selection-warning">
+                                        Seleziona un giorno e le opzioni desiderate
+                                    </div>
+                                    
+                                    <div id="riepilogo">
+                                        <p><strong>Giorno:</strong> <span id="riepilogo-giorno">Nessuno</span></p>
+                                        <p><strong>Selezioni:</strong></p>
+                                        <ul id="riepilogo-selezioni"></ul>
+                                        <p><strong>Opzione celiaca:</strong> <span id="riepilogo-celiaco">No</span></p>
+                                    </div>
+
+                                    <button class="btn btn-success mt-3 w-100" id="salva-prenotazione" disabled>
+                                        <i class="fas fa-save me-2"></i>Salva Prenotazione
+                                    </button>
+
+                                    <div class="mt-4">
+                                        <h5>Le tue prenotazioni</h5>
+                                        <div id="prenotazioni-esistenti">
+                                            <p class="text-muted">Nessuna prenotazione salvata</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AREA AMMINISTRATORE -->
+                <div class="tab-pane fade admin-section" id="pills-admin" role="tabpanel">
+                    <div id="adminDashboard">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0"><i class="fas fa-tachometer-alt me-2"></i>Pannello di Controllo Amministratore</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-4">
+                                            <div class="col-md-4">
+                                                <div class="stats-card primary">
+                                                    <h5>Dipendenti Registrati</h5>
+                                                    <h2 id="total-dipendenti">0</h2>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="stats-card success">
+                                                    <h5>Prenotazioni Totali</h5>
+                                                    <h2 id="total-prenotazioni">0</h2>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="stats-card warning">
+                                                    <h5>Menu Celiaci</h5>
+                                                    <h2 id="total-celiaci">0</h2>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid gap-2 d-md-flex justify-content-md-center mb-4">
+                                            <button class="btn btn-primary me-md-2" id="export-excel">
+                                                <i class="fas fa-file-excel me-2"></i>Esporta Excel
+                                            </button>
+                                            <button class="btn btn-success me-md-2" id="export-summary">
+                                                <i class="fas fa-chart-pie me-2"></i>Riepilogo Quantità
+                                            </button>
+                                            <button class="btn btn-danger" id="generate-pdf">
+                                                <i class="fas fa-file-pdf me-2"></i>Genera PDF
+                                            </button>
+                                        </div>
+
+                                        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+                                            <li class="nav-item" role="presentation">
+                                                <button class="nav-link active" id="prenotazioni-tab" data-bs-toggle="tab" data-bs-target="#prenotazioni" type="button" role="tab">Prenotazioni</button>
+                                            </li>
+                                            <li class="nav-item" role="presentation">
+                                                <button class="nav-link" id="dipendenti-tab" data-bs-toggle="tab" data-bs-target="#dipendenti" type="button" role="tab">Dipendenti</button>
+                                            </li>
+                                        </ul>
+
+                                        <div class="tab-content mt-3" id="adminTabsContent">
+                                            <div class="tab-pane fade show active" id="prenotazioni" role="tabpanel">
+                                                <h5>Prenotazioni per Giorno</h5>
+                                                <div class="table-responsive">
+                                                    <table class="table table-bordered">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Giorno</th>
+                                                                <th>Numero Prenotazioni</th>
+                                                                <th>Azioni</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="prenotazioni-table">
+                                                            <tr>
+                                                                <td>Lunedì</td>
+                                                                <td>0</td>
+                                                                <td><button class="btn btn-sm btn-info">Dettagli</button></td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Martedì</td>
+                                                                <td>0</td>
+                                                                <td><button class="btn btn-sm btn-info">Dettagli</button></td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Mercoledì</td>
+                                                                <td>0</td>
+                                                                <td><button class="btn btn-sm btn-info">Dettagli</button></td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Giovedì</td>
+                                                                <td>0</td>
+                                                                <td><button class="btn btn-sm btn-info">Dettagli</button></td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Venerdì</td>
+                                                                <td>0</td>
+                                                                <td><button class="btn btn-sm btn-info">Dettagli</button></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="dipendenti" role="tabpanel">
+                                                <h5>Gestione Dipendenti</h5>
+                                                <div class="table-responsive">
+                                                    <table class="table table-bordered">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Nome</th>
+                                                                <th>Email</th>
+                                                                <th>Reparto</th>
+                                                                <th>Menu Celiaco</th>
+                                                                <th>Azioni</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="dipendenti-table">
+                                                            <!-- I dati dei dipendenti verranno inseriti qui dinamicamente -->
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="adminAccessDenied" class="alert alert-danger text-center hidden">
+                        <h4><i class="fas fa-exclamation-triangle me-2"></i>Accesso Negato</h4>
+                        <p>Non hai i permessi per accedere all'area amministratore.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="bg-light text-center text-muted py-3 mt-5">
+            <p>© 2023 Azienda S.p.A. - Sistema Prenotazione Mensa</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Data e stato iniziale
+            let currentDay = null;
+            let selectedItems = [];
+            let prenotazioni = JSON.parse(localStorage.getItem('prenotazioni')) || {};
+            let dipendenti = JSON.parse(localStorage.getItem('dipendenti')) || {};
+            let currentUser = null;
+            let isAdmin = false;
+            
+            // Inizializza con alcuni dati di esempio se non ci sono dipendenti
+            if (Object.keys(dipendenti).length === 0) {
+                dipendenti = {
+                    "admin@azienda.com": {
+                        nome: "Amministratore Sistema",
+                        password: "admin123",
+                        reparto: "Amministrazione",
+                        celiaco: false,
+                        isAdmin: true
+                    },
+                    "mario.rossi@azienda.com": {
+                        nome: "Mario Rossi",
+                        password: "password123",
+                        reparto: "Produzione",
+                        celiaco: true,
+                        isAdmin: false
+                    }
+                };
+                localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
+            }
+            
+            // Aggiorna data corrente
+            if (document.getElementById('current-date')) {
+                document.getElementById('current-date').textContent = new Date().toLocaleDateString('it-IT', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+            
+            // Gestione registrazione
+            document.getElementById('registerBtn').addEventListener('click', function() {
+                const name = document.getElementById('registerName').value;
+                const email = document.getElementById('registerEmail').value;
+                const password = document.getElementById('registerPassword').value;
+                const department = document.getElementById('registerDepartment').value;
+                const celiac = document.getElementById('celiacCheck').checked;
+                
+                if (!name || !email || !password || !department) {
+                    alert("Per favore, compila tutti i campi obbligatori.");
+                    return;
+                }
+                
+                if (dipendenti[email]) {
+                    alert("Esiste già un account con questa email.");
+                    return;
+                }
+                
+                // Registra il nuovo dipendente
+                dipendenti[email] = {
+                    nome: name,
+                    password: password,
+                    reparto: department,
+                    celiaco: celiac,
+                    isAdmin: false
+                };
+                
+                localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
+                
+                alert("Registrazione completata con successo! Ora puoi effettuare il login.");
+                document.getElementById('authTabs').querySelector('.nav-link').click();
+                
+                // Pulisci il form
+                document.getElementById('registerName').value = '';
+                document.getElementById('registerEmail').value = '';
+                document.getElementById('registerPassword').value = '';
+                document.getElementById('registerDepartment').value = '';
+                document.getElementById('celiacCheck').checked = false;
+            });
+            
+            // Gestione login
+            document.getElementById('loginBtn').addEventListener('click', function() {
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                const adminLogin = document.getElementById('adminLogin').checked;
+                
+                if (!email || !password) {
+                    alert("Per favore, inserisci email e password.");
+                    return;
+                }
+                
+                if (!dipendenti[email]) {
+                    alert("Nessun account trovato con questa email.");
+                    return;
+                }
+                
+                if (dipendenti[email].password !== password) {
+                    alert("Password errata.");
+                    return;
+                }
+                
+                // Verifica se è un amministratore
+                if (adminLogin && !dipendenti[email].isAdmin) {
+                    alert("Questo account non ha privilegi di amministratore.");
+                    return;
+                }
+                
+                // Login riuscito
+                currentUser = email;
+                isAdmin = adminLogin;
+                
+                // Mostra l'applicazione
+                document.getElementById('authScreen').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+                
+                // Aggiorna l'info utente
+                document.getElementById('userInfo').textContent = `Utente: ${dipendenti[email].nome} (${isAdmin ? 'Amministratore' : 'Dipendente'})`;
+                
+                // Se è un amministratore, mostra la dashboard
+                if (isAdmin) {
+                    document.getElementById('adminDashboard').classList.remove('hidden');
+                    document.getElementById('adminAccessDenied').classList.add('hidden');
+                    updateAdminDashboard();
+                } else {
+                    document.getElementById('adminDashboard').classList.add('hidden');
+                    document.getElementById('adminAccessDenied').classList.remove('hidden');
+                }
+                
+                // Carica le prenotazioni esistenti
+                loadPrenotazioniEsistenti();
+            });
+            
+            // Gestione logout
+            document.getElementById('logoutBtn').addEventListener('click', function() {
+                currentUser = null;
+                isAdmin = false;
+                document.getElementById('appContainer').classList.add('hidden');
+                document.getElementById('authScreen').classList.remove('hidden');
+                
+                // Pulisci il form di login
+                document.getElementById('loginEmail').value = '';
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('adminLogin').checked = false;
+            });
+            
+            // Gestione selezione giorno
+            document.querySelectorAll('.day-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentDay = this.getAttribute('data-day');
+                    
+                    document.getElementById('current-day').textContent = this.textContent;
+                    document.querySelector('.selected-day').classList.remove('hidden');
+                    
+                    updateRiepilogo();
+                    checkSaveButton();
+                    loadPrenotazioniEsistenti();
+                });
+            });
+            
+            // Gestione selezione menu
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    if (this.classList.contains('disabled')) return;
+                    
+                    const type = this.getAttribute('data-type');
+                    const code = this.getAttribute('data-code');
+                    
+                    // Gestione elementi esclusivi (T, S, Q)
+                    if (['T', 'S', 'Q'].includes(code)) {
+                        // Se già selezionato, deseleziona
+                        if (this.classList.contains('selected')) {
+                            this.classList.remove('selected');
+                            selectedItems = selectedItems.filter(i => i !== code);
+                            
+                            // Riabilita tutti gli elementi
+                            document.querySelectorAll('.menu-item').forEach(i => {
+                                i.classList.remove('disabled');
+                            });
+                            
+                            // Nascondi selezione gusto pizza se necessario
+                            if (code === 'Q') {
+                                this.querySelector('.pizza-flavor').style.display = 'none';
+                            }
+                        } else {
+                            // Deseleziona tutto prima
+                            document.querySelectorAll('.menu-item').forEach(i => {
+                                i.classList.remove('selected');
+                                if (!['T', 'S', 'Q'].includes(i.getAttribute('data-code'))) {
+                                    i.classList.add('disabled');
+                                }
+                            });
+                            
+                            // Seleziona l'elemento corrente
+                            this.classList.add('selected');
+                            selectedItems = [code];
+                            
+                            // Mostra selezione gusto pizza se necessario
+                            if (code === 'Q') {
+                                this.querySelector('.pizza-flavor').style.display = 'block';
+                            }
+                        }
+                    } else {
+                        // Se sono già selezionati T, S o Q, non permettere altre selezioni
+                        if (selectedItems.some(i => ['T', 'S', 'Q'].includes(i))) {
+                            return;
+                        }
+                        
+                        // Gestione selezione/deselezione normale
+                        if (this.classList.contains('selected')) {
+                            this.classList.remove('selected');
+                            selectedItems = selectedItems.filter(i => i !== code);
+                        } else {
+                            // Per primi, secondi e contorni, permettere solo una selezione per tipo
+                            if (['primo', 'secondo', 'contorno'].includes(type)) {
+                                document.querySelectorAll(`.menu-item[data-type="${type}"]`).forEach(i => {
+                                    i.classList.remove('selected');
+                                });
+                                selectedItems = selectedItems.filter(i => {
+                                    const itemType = document.querySelector(`.menu-item[data-code="${i}"]`).getAttribute('data-type');
+                                    return itemType !== type;
+                                });
+                            }
+                            
+                            this.classList.add('selected');
+                            selectedItems.push(code);
+                        }
+                    }
+                    
+                    updateRiepilogo();
+                    checkSaveButton();
+                });
+            });
+            
+            // Gestione opzione celiaca
+            document.getElementById('celiaco').addEventListener('change', function() {
+                updateRiepilogo();
+            });
+            
+            // Aggiorna il riepilogo
+            function updateRiepilogo() {
+                const giornoElem = document.getElementById('riepilogo-giorno');
+                const selezioniElem = document.getElementById('riepilogo-selezioni');
+                const celiacoElem = document.getElementById('riepilogo-celiaco');
+                
+                if (currentDay) {
+                    const dayNames = {
+                        'lun': 'Lunedì',
+                        'mar': 'Martedì',
+                        'mer': 'Mercoledì',
+                        'gio': 'Giovedì',
+                        'ven': 'Venerdì'
+                    };
+                    giornoElem.textContent = dayNames[currentDay];
+                } else {
+                    giornoElem.textContent = 'Nessuno';
+                }
+                
+                selezioniElem.innerHTML = '';
+                if (selectedItems.length > 0) {
+                    selectedItems.forEach(code => {
+                        const li = document.createElement('li');
+                        li.textContent = `Opzione ${code}`;
+                        if (code === 'Q') {
+                            const gusto = document.getElementById('pizza-gusto').value;
+                            li.textContent += ` (Pizza: ${gusto})`;
+                        }
+                        selezioniElem.appendChild(li);
+                    });
+                } else {
+                    selezioniElem.innerHTML = '<li>Nessuna selezione</li>';
+                }
+                
+                celiacoElem.textContent = document.getElementById('celiaco').checked ? 'Sì' : 'No';
+            }
+            
+            // Controlla se il pulsante di salvataggio può essere abilitato
+            function checkSaveButton() {
+                const saveBtn = document.getElementById('salva-prenotazione');
+                saveBtn.disabled = !currentDay || selectedItems.length === 0;
+            }
+            
+            // Carica le prenotazioni esistenti
+            function loadPrenotazioniEsistenti() {
+                const container = document.getElementById('prenotazioni-esistenti');
+                if (!currentDay || !currentUser) {
+                    container.innerHTML = '<p class="text-muted">Seleziona un giorno per vedere le tue prenotazioni</p>';
+                    return;
+                }
+                
+                const userPrenotazioni = prenotazioni[currentUser] || {};
+                const dayPrenotazione = userPrenotazioni[currentDay];
+                
+                if (dayPrenotazione) {
+                    let html = `
+                        <div class="card mb-2">
+                            <div class="card-body">
+                                <h6>Prenotazione per ${getDayName(currentDay)}</h6>
+                                <p><strong>Selezioni:</strong> ${dayPrenotazione.selezioni.join(', ')}</p>
+                                <p><strong>Opzione celiaca:</strong> ${dayPrenotazione.celiaco ? 'Sì' : 'No'}</p>
+                        `;
+                    
+                    if (dayPrenotazione.selezioni.includes('Q')) {
+                        html += `<p><strong>Gusto pizza:</strong> ${dayPrenotazione.pizzaGusto}</p>`;
+                    }
+                    
+                    html += `
+                                <button class="btn btn-sm btn-danger cancel-btn" data-day="${currentDay}">
+                                    <i class="fas fa-trash me-1"></i>Cancella
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    container.innerHTML = html;
+                    
+                    // Aggiungi event listener per il pulsante di cancellazione
+                    document.querySelector('.cancel-btn').addEventListener('click', function() {
+                        const dayToCancel = this.getAttribute('data-day');
+                        cancelPrenotazione(dayToCancel);
+                    });
+                } else {
+                    container.innerHTML = '<p class="text-muted">Nessuna prenotazione per questo giorno</p>';
+                }
+            }
+            
+            // Funzione per ottenere il nome del giorno
+            function getDayName(dayCode) {
+                const days = {
+                    'lun': 'Lunedì',
+                    'mar': 'Martedì',
+                    'mer': 'Mercoledì',
+                    'gio': 'Giovedì',
+                    'ven': 'Venerdì'
+                };
+                return days[dayCode];
+            }
+            
+            // Salva la prenotazione
+            document.getElementById('salva-prenotazione').addEventListener('click', function() {
+                if (!currentDay || selectedItems.length === 0 || !currentUser) return;
+                
+                // Prepara i dati della prenotazione
+                const prenotazione = {
+                    selezioni: selectedItems,
+                    celiaco: document.getElementById('celiaco').checked,
+                    pizzaGusto: selectedItems.includes('Q') ? document.getElementById('pizza-gusto').value : null
+                };
+                
+                // Salva nei dati dell'utente
+                if (!prenotazioni[currentUser]) {
+                    prenotazioni[currentUser] = {};
+                }
+                
+                prenotazioni[currentUser][currentDay] = pre
