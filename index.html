@@ -110,6 +110,10 @@
         .stats-card.warning {
             background-color: #f6c23e;
         }
+        .pin-field {
+            letter-spacing: 0.3em;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -147,6 +151,10 @@
                                         <input type="checkbox" class="form-check-input" id="adminLogin">
                                         <label class="form-check-label" for="adminLogin">Accesso come Amministratore</label>
                                     </div>
+                                    <div class="mb-3 hidden" id="adminPinContainer">
+                                        <label for="adminPin" class="form-label">PIN Amministratore</label>
+                                        <input type="password" class="form-control pin-field" id="adminPin" placeholder="Inserisci PIN" maxlength="8">
+                                    </div>
                                     <button id="loginBtn" class="btn btn-primary w-100">Accedi</button>
                                 </div>
                                 
@@ -163,17 +171,6 @@
                                     <div class="mb-3">
                                         <label for="registerPassword" class="form-label">Password</label>
                                         <input type="password" class="form-control" id="registerPassword" placeholder="Password">
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="registerDepartment" class="form-label">Reparto</label>
-                                        <select class="form-select" id="registerDepartment">
-                                            <option value="">Seleziona reparto</option>
-                                            <option value="Amministrazione">Amministrazione</option>
-                                            <option value="Produzione">Produzione</option>
-                                            <option value="Vendite">Vendite</option>
-                                            <option value="IT">IT</option>
-                                            <option value="Risorse Umane">Risorse Umane</option>
-                                        </select>
                                     </div>
                                     <div class="mb-3 form-check">
                                         <input type="checkbox" class="form-check-input" id="celiacCheck">
@@ -448,7 +445,6 @@
                                                             <tr>
                                                                 <th>Nome</th>
                                                                 <th>Email</th>
-                                                                <th>Reparto</th>
                                                                 <th>Menu Celiaco</th>
                                                                 <th>Azioni</th>
                                                             </tr>
@@ -488,6 +484,7 @@
             let dipendenti = JSON.parse(localStorage.getItem('dipendenti')) || {};
             let currentUser = null;
             let isAdmin = false;
+            const ADMIN_PIN = "22051976"; // PIN fisso per accesso amministratore
             
             // Inizializza con alcuni dati di esempio se non ci sono dipendenti
             if (Object.keys(dipendenti).length === 0) {
@@ -495,20 +492,28 @@
                     "admin@azienda.com": {
                         nome: "Amministratore Sistema",
                         password: "admin123",
-                        reparto: "Amministrazione",
                         celiaco: false,
                         isAdmin: true
                     },
                     "mario.rossi@azienda.com": {
                         nome: "Mario Rossi",
                         password: "password123",
-                        reparto: "Produzione",
                         celiaco: true,
                         isAdmin: false
                     }
                 };
                 localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
             }
+            
+            // Mostra/nascondi campo PIN in base alla selezione
+            document.getElementById('adminLogin').addEventListener('change', function() {
+                const pinContainer = document.getElementById('adminPinContainer');
+                if (this.checked) {
+                    pinContainer.classList.remove('hidden');
+                } else {
+                    pinContainer.classList.add('hidden');
+                }
+            });
             
             // Aggiorna data corrente
             if (document.getElementById('current-date')) {
@@ -525,10 +530,9 @@
                 const name = document.getElementById('registerName').value;
                 const email = document.getElementById('registerEmail').value;
                 const password = document.getElementById('registerPassword').value;
-                const department = document.getElementById('registerDepartment').value;
                 const celiac = document.getElementById('celiacCheck').checked;
                 
-                if (!name || !email || !password || !department) {
+                if (!name || !email || !password) {
                     alert("Per favore, compila tutti i campi obbligatori.");
                     return;
                 }
@@ -542,7 +546,6 @@
                 dipendenti[email] = {
                     nome: name,
                     password: password,
-                    reparto: department,
                     celiaco: celiac,
                     isAdmin: false
                 };
@@ -556,7 +559,6 @@
                 document.getElementById('registerName').value = '';
                 document.getElementById('registerEmail').value = '';
                 document.getElementById('registerPassword').value = '';
-                document.getElementById('registerDepartment').value = '';
                 document.getElementById('celiacCheck').checked = false;
             });
             
@@ -565,9 +567,15 @@
                 const email = document.getElementById('loginEmail').value;
                 const password = document.getElementById('loginPassword').value;
                 const adminLogin = document.getElementById('adminLogin').checked;
+                const adminPin = document.getElementById('adminPin').value;
                 
                 if (!email || !password) {
                     alert("Per favore, inserisci email e password.");
+                    return;
+                }
+                
+                if (adminLogin && !adminPin) {
+                    alert("Per accedere come amministratore, è necessario inserire il PIN.");
                     return;
                 }
                 
@@ -581,15 +589,21 @@
                     return;
                 }
                 
-                // Verifica se è un amministratore
-                if (adminLogin && !dipendenti[email].isAdmin) {
-                    alert("Questo account non ha privilegi di amministratore.");
-                    return;
+                // Verifica se è un amministratore e controllo PIN
+                if (adminLogin) {
+                    if (adminPin !== ADMIN_PIN) {
+                        alert("PIN amministratore errato.");
+                        return;
+                    }
+                    
+                    // Se il PIN è corretto, imposta l'utente come amministratore
+                    dipendenti[email].isAdmin = true;
+                    localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
                 }
                 
                 // Login riuscito
                 currentUser = email;
-                isAdmin = adminLogin;
+                isAdmin = adminLogin || dipendenti[email].isAdmin;
                 
                 // Mostra l'applicazione
                 document.getElementById('authScreen').classList.add('hidden');
@@ -610,6 +624,11 @@
                 
                 // Carica le prenotazioni esistenti
                 loadPrenotazioniEsistenti();
+                
+                // Resetta il form di login
+                document.getElementById('adminPin').value = '';
+                document.getElementById('adminPinContainer').classList.add('hidden');
+                document.getElementById('adminLogin').checked = false;
             });
             
             // Gestione logout
@@ -623,6 +642,8 @@
                 document.getElementById('loginEmail').value = '';
                 document.getElementById('loginPassword').value = '';
                 document.getElementById('adminLogin').checked = false;
+                document.getElementById('adminPin').value = '';
+                document.getElementById('adminPinContainer').classList.add('hidden');
             });
             
             // Gestione selezione giorno
@@ -830,9 +851,202 @@
                     pizzaGusto: selectedItems.includes('Q') ? document.getElementById('pizza-gusto').value : null
                 };
                 
-                // Salva nei dati dell'utente
+                // Inizializza se necessario
                 if (!prenotazioni[currentUser]) {
                     prenotazioni[currentUser] = {};
                 }
                 
-                prenotazioni[currentUser][currentDay] = pre
+                // Salva la prenotazione
+                prenotazioni[currentUser][currentDay] = prenotazione;
+                localStorage.setItem('prenotazioni', JSON.stringify(prenotazioni));
+                
+                alert(`Prenotazione per ${getDayName(currentDay)} salvata con successo!`);
+                loadPrenotazioniEsistenti();
+                
+                // Se l'utente è admin, aggiorna la dashboard
+                if (isAdmin) {
+                    updateAdminDashboard();
+                }
+            });
+            
+            // Cancella una prenotazione
+            function cancelPrenotazione(day) {
+                if (!confirm(`Sei sicuro di voler cancellare la prenotazione per ${getDayName(day)}?`)) return;
+                
+                if (prenotazioni[currentUser] && prenotazioni[currentUser][day]) {
+                    delete prenotazioni[currentUser][day];
+                    localStorage.setItem('prenotazioni', JSON.stringify(prenotazioni));
+                    
+                    alert(`Prenotazione per ${getDayName(day)} cancellata.`);
+                    loadPrenotazioniEsistenti();
+                    
+                    // Se l'utente è admin, aggiorna la dashboard
+                    if (isAdmin) {
+                        updateAdminDashboard();
+                    }
+                }
+            }
+            
+            // Aggiorna la dashboard amministratore
+            function updateAdminDashboard() {
+                if (!isAdmin) return;
+                
+                // Aggiorna statistiche
+                document.getElementById('total-dipendenti').textContent = Object.keys(dipendenti).length;
+                
+                let totalPrenotazioni = 0;
+                let totalCeliaci = 0;
+                
+                for (const user in prenotazioni) {
+                    for (const day in prenotazioni[user]) {
+                        totalPrenotazioni++;
+                        if (prenotazioni[user][day].celiaco) {
+                            totalCeliaci++;
+                        }
+                    }
+                }
+                
+                document.getElementById('total-prenotazioni').textContent = totalPrenotazioni;
+                document.getElementById('total-celiaci').textContent = totalCeliaci;
+                
+                // Aggiorna tabella prenotazioni per giorno
+                const prenotazioniTable = document.getElementById('prenotazioni-table');
+                const days = ['lun', 'mar', 'mer', 'gio', 'ven'];
+                
+                days.forEach((day, index) => {
+                    let count = 0;
+                    for (const user in prenotazioni) {
+                        if (prenotazioni[user][day]) {
+                            count++;
+                        }
+                    }
+                    
+                    const row = prenotazioniTable.rows[index];
+                    row.cells[1].textContent = count;
+                    row.cells[2].innerHTML = `<button class="btn btn-sm btn-info" onclick="showDayDetails('${day}')">Dettagli</button>`;
+                });
+                
+                // Aggiorna tabella dipendenti
+                const dipendentiTable = document.getElementById('dipendenti-table');
+                dipendentiTable.innerHTML = '';
+                
+                for (const email in dipendenti) {
+                    const dipendente = dipendenti[email];
+                    const row = document.createElement('tr');
+                    
+                    row.innerHTML = `
+                        <td>${dipendente.nome}</td>
+                        <td>${email}</td>
+                        <td>${dipendente.celiaco ? 'Sì' : 'No'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="editDipendente('${email}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            ${!dipendente.isAdmin ? `
+                            <button class="btn btn-sm btn-danger" onclick="deleteDipendente('${email}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            ` : ''}
+                        </td>
+                    `;
+                    
+                    dipendentiTable.appendChild(row);
+                }
+            }
+            
+            // Esporta i dati in Excel
+            document.getElementById('export-excel').addEventListener('click', function() {
+                if (!isAdmin) return;
+                
+                // Prepara i dati per l'esportazione
+                const data = [];
+                data.push(['Dipendente', 'Email', 'Giorno', 'Selezioni', 'Menu Celiaco', 'Gusto Pizza']);
+                
+                for (const userEmail in prenotazioni) {
+                    const userPrenotazioni = prenotazioni[userEmail];
+                    const userName = dipendenti[userEmail] ? dipendenti[userEmail].nome : userEmail;
+                    
+                    for (const day in userPrenotazioni) {
+                        const prenotazione = userPrenotazioni[day];
+                        data.push([
+                            userName,
+                            userEmail,
+                            getDayName(day),
+                            prenotazione.selezioni.join(', '),
+                            prenotazione.celiaco ? 'Sì' : 'No',
+                            prenotazione.pizzaGusto || '-'
+                        ]);
+                    }
+                }
+                
+                // Crea il foglio di lavoro
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Prenotazioni Mensa");
+                
+                // Esporta il file
+                XLSX.writeFile(wb, "prenotazioni_mensa.xlsx");
+            });
+            
+            // Genera PDF
+            document.getElementById('generate-pdf').addEventListener('click', function() {
+                if (!isAdmin) return;
+                alert("Funzionalità PDF sarà implementata qui.");
+            });
+            
+            // Esporta riepilogo quantità
+            document.getElementById('export-summary').addEventListener('click', function() {
+                if (!isAdmin) return;
+                
+                // Calcola le quantità per ogni opzione
+                const quantities = {};
+                
+                for (const userEmail in prenotazioni) {
+                    for (const day in prenotazioni[userEmail]) {
+                        const prenotazione = prenotazioni[userEmail][day];
+                        
+                        prenotazione.selezioni.forEach(selection => {
+                            if (!quantities[selection]) {
+                                quantities[selection] = 0;
+                            }
+                            quantities[selection]++;
+                        });
+                    }
+                }
+                
+                // Prepara i dati per l'esportazione
+                const data = [['Opzione', 'Quantità']];
+                
+                for (const option in quantities) {
+                    data.push([option, quantities[option]]);
+                }
+                
+                // Crea il foglio di lavoro
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Riepilogo Quantità");
+                
+                // Esporta il file
+                XLSX.writeFile(wb, "riepilogo_quantita.xlsx");
+            });
+            
+            // Funzioni globali per l'amministratore
+            window.showDayDetails = function(day) {
+                alert(`Dettagli prenotazioni per ${getDayName(day)}:\n\nQuesta funzionalità sarà implementata.`);
+            };
+            
+            window.editDipendente = function(email) {
+                alert(`Modifica dipendente: ${email}\n\nQuesta funzionalità sarà implementata.`);
+            };
+            
+            window.deleteDipendente = function(email) {
+                if (confirm(`Sei sicuro di voler eliminare il dipendente ${email}?`)) {
+                    delete dipendenti[email];
+                    localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
+                    updateAdminDashboard();
+                }
+            };
+        });
+    </script>
+</body>
+</html>
