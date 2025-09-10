@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Prenotazione Mensa Aziendale</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+  <!-- xlsx for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+  <style>
+    :root { --dipendente-color:#4e73df; --admin-color:#1cc88a; }
+    body { background-color:#f8f9fc; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .header { background:linear-gradient(135deg, var(--dipendente-color) 0%, var(--admin-color) 100%); color:#fff; padding:20px 0; margin-bottom:30px; }
+    .card { border-radius:10px; box-shadow:0 0.15rem 1.75rem 0 rgba(58,59,69,.15); margin-bottom:20px; }
+    .card-header { font-weight:bold; }
+    .menu-item { border:1px solid #ddd; border-radius:5px; padding:10px; margin-bottom:10px; cursor:pointer; transition:all .25s; }
+    .menu-item:hover { background-color:#f1f1f1; }
+    .menu-item.selected { background-color:#d4edda; border-color:#c3e6cb; }
+    .hidden { display:none; }
+    .small-muted { font-size:.9rem; color:#6c757d; }
+    .day-date{font-weight:600;}
+  </style>
+</head>
+<body>
+  <!-- AUTH -->
+  <div id="authScreen">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header text-center">
+              <h4><i class="fas fa-utensils me-2"></i>Accesso Mensa Aziendale</h4>
+            </div>
+            <div class="card-body">
+              <ul class="nav nav-pills mb-3 justify-content-center" id="authTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#login" type="button" role="tab">Login</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" data-bs-toggle="pill" data-bs-target="#register" type="button" role="tab">Registrazione</button>
+                </li>
+              </ul>
+
+              <div class="tab-content">
+                <!-- LOGIN -->
+                <div class="tab-pane fade show active" id="login" role="tabpanel">
+                  <div class="mb-3">
+                    <label class="form-label">Nome e Cognome</label>
+                    <input type="text" class="form-control" id="loginName" placeholder="Mario Rossi">
+                  </div>
+                  <div class="mb-3 hidden" id="pinField">
+                    <label class="form-label">PIN Amministratore</label>
+                    <input type="password" class="form-control" id="loginPin" placeholder="Inserisci PIN">
+                  </div>
+                  <p class="text-center"><a href="#" id="showPin">Accedi come amministratore</a></p>
+                  <button id="loginBtn" class="btn btn-primary w-100">Accedi</button>
+                </div>
+
+                <!-- REGISTER -->
+                <div class="tab-pane fade" id="register" role="tabpanel">
+                  <div class="mb-3">
+                    <label class="form-label">Nome e Cognome</label>
+                    <input type="text" class="form-control" id="registerName" placeholder="Mario Rossi">
+                  </div>
+                  <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="celiacCheck">
+                    <label class="form-check-label" for="celiacCheck">Richiedo menu celiaco</label>
+                  </div>
+                  <button id="registerBtn" class="btn btn-success w-100">Registrati</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="appContainer" class="hidden">
+    <div class="header text-center">
+      <h1><i class="fas fa-utensils me-2"></i>Prenotazione Mensa Aziendale</h1>
+      <div id="companyBrand" class="small" style="opacity:.9">&nbsp;</div>
+      <span id="userInfo"></span>
+      <button id="logoutBtn" class="btn btn-light btn-sm">Logout</button>
+    </div>
+
+    <div class="container">
+      <ul class="nav nav-pills mb-4 justify-content-center" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-dipendente" type="button" role="tab">Area Dipendenti</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-admin" type="button" role="tab">Area Amministratore</button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <!-- DIPENDENTI -->
+        <div class="tab-pane fade show active" id="pills-dipendente" role="tabpanel">
+          <div class="card">
+            <div class="card-header">Seleziona Giorno</div>
+            <div class="card-body pb-0">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Navigazione settimana">
+                  <button class="btn btn-outline-secondary" id="prevWeek" aria-label="Settimana precedente">&laquo;</button>
+                  <button class="btn btn-outline-secondary" id="thisWeek" aria-label="Settimana corrente">Questa settimana</button>
+                  <button class="btn btn-outline-secondary" id="nextWeek" aria-label="Settimana successiva">&raquo;</button>
+                </div>
+                <div class="small-muted"><span id="weekLabel">Settimana corrente</span></div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="btn-group flex-wrap" role="group">
+                <button type="button" class="btn btn-outline-primary day-btn" data-day="Lunedì">Lun <span class="day-date" data-dayname="Lunedì"></span></button>
+                <button type="button" class="btn btn-outline-primary day-btn" data-day="Martedì">Mar <span class="day-date" data-dayname="Martedì"></span></button>
+                <button type="button" class="btn btn-outline-primary day-btn" data-day="Mercoledì">Mer <span class="day-date" data-dayname="Mercoledì"></span></button>
+                <button type="button" class="btn btn-outline-primary day-btn" data-day="Giovedì">Gio <span class="day-date" data-dayname="Giovedì"></span></button>
+                <button type="button" class="btn btn-outline-primary day-btn" data-day="Venerdì">Ven <span class="day-date" data-dayname="Venerdì"></span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Menu del Giorno</div>
+            <div class="card-body">
+              <h6>Primi Piatti</h6>
+              <div class="menu-item" data-group="primo" data-code="A"><strong>A</strong></div>
+              <div class="menu-item" data-group="primo" data-code="B"><strong>B</strong></div>
+              <div class="menu-item" data-group="primo" data-code="L"><strong>L</strong></div>
+              <div class="menu-item" data-group="primo" data-code="P"><strong>P</strong></div>
+
+              <h6 class="mt-3">Secondi Piatti</h6>
+              <div class="menu-item" data-group="secondo" data-code="E"><strong>E</strong></div>
+              <div class="menu-item" data-group="secondo" data-code="F"><strong>F</strong></div>
+              <div class="menu-item" data-group="secondo" data-code="L"><strong>L</strong></div>
+              <div class="menu-item" data-group="secondo" data-code="P"><strong>P</strong></div>
+
+              <h6 class="mt-3">Contorni</h6>
+              <div class="menu-item" data-group="contorno" data-code="G"><strong>G</strong></div>
+              <div class="menu-item" data-group="contorno" data-code="H"><strong>H</strong></div>
+
+              <h6 class="mt-3">Piatti Unici</h6>
+              <div class="menu-item" data-group="unico" data-code="S"><strong>S</strong></div>
+              <div class="menu-item" data-group="unico" data-code="T"><strong>T</strong></div>
+              <div class="menu-item" data-group="unico" data-code="Q"><strong>Q</strong> Pizza
+                <div class="mt-2">
+                  <select class="form-select" id="pizzaSelect" disabled>
+                    <option value="MARGHERITA">MARGHERITA</option>
+                    <option value="MARINARA">MARINARA</option>
+                    <option value="NAPOLETANA">NAPOLETANA</option>
+                    <option value="ROMANA">ROMANA</option>
+                    <option value="PROSCIUTTO COTTO">PROSCIUTTO COTTO</option>
+                    <option value="FUNGHI">FUNGHI</option>
+                    <option value="PROSCIUTTO E FUNGHI">PROSCIUTTO E FUNGHI</option>
+                    <option value="TONNO">TONNO</option>
+                    <option value="4 FORMAGGI">4 FORMAGGI</option>
+                    <option value="4 STAGIONI">4 STAGIONI</option>
+                    <option value="SALAMINO">SALAMINO</option>
+                    <option value="CAPRICCIOSA">CAPRICCIOSA</option>
+                    <option value="DIAVOLA">DIAVOLA</option>
+                    <option value="VEGETARIANA">VEGETARIANA</option>
+                    <option value="VERDURE GRIGLIATE">VERDURE GRIGLIATE</option>
+                    <option value="PUGLIESE">PUGLIESE</option>
+                    <option value="WURSTEL">WURSTEL</option>
+                    <option value="COTTO E SALAMINO">COTTO E SALAMINO</option>
+                    <option value="PATATINA">PATATINA</option>
+                    <option value="PATATINA E FUNGHI">PATATINA E FUNGHI</option>
+                    <option value="PATATINA E SALAMINO">PATATINA E SALAMINO</option>
+                    <option value="FUNGHI E SALAMINO">FUNGHI E SALAMINO</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Riepilogo Prenotazione</div>
+            <div class="card-body">
+              <p><strong>Giorno:</strong> <span id="riepilogoGiorno">Nessuno</span></p>
+              <p><strong>Scelte:</strong> <span id="riepilogoScelte">Nessuna</span></p>
+              <div class="d-flex gap-2 mt-3"><button class="btn btn-success" id="salvaPrenotazione">Salva Prenotazione</button><button class="btn btn-outline-secondary" id="resetSelezioni" type="button">Pulisci selezione</button></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Le tue prenotazioni (settimana)</div>
+            <div class="card-body">
+              <div id="weeklySummary"><p class="text-muted">Nessuna prenotazione salvata.</p></div>
+              <p class="small-muted mt-2">
+                <i class="fas fa-clock me-1"></i>
+                La cancellazione con invio WhatsApp è consentita fino alle <strong>08:30</strong> del giorno selezionato.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- AMMINISTRATORE -->
+        <div class="tab-pane fade" id="pills-admin" role="tabpanel">
+          <!-- Impostazioni azienda + WhatsApp -->
+          <div class="card mb-3">
+            <div class="card-header">Impostazioni azienda / WhatsApp</div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-sm-6 col-md-4">
+                  <label class="form-label">Nome azienda</label>
+                  <input type="text" id="companyNameInput" class="form-control" placeholder="Nome azienda">
+                </div>
+                <div class="col-sm-6 col-md-4">
+                  <label class="form-label">Numero WhatsApp ristorante (es. 39333xxxxxxx)</label>
+                  <input type="text" id="whatsNumber" class="form-control" placeholder="39333xxxxxxx">
+                </div>
+                <div class="col-auto d-flex gap-2">
+                  <button id="saveSettings" class="btn btn-outline-success">Salva impostazioni</button>
+                  <button id="testWhats" class="btn btn-outline-secondary" title="Invia messaggio di prova WhatsApp">
+                    <i class="fab fa-whatsapp"></i> Test WhatsApp
+                  </button>
+                </div>
+              </div>
+              <small class="text-muted">Il nome azienda appare nell’header e nei messaggi WhatsApp.</small>
+            </div>
+          </div>
+
+          <!-- Connessione Cloud (Firebase) -->
+          <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span>Connessione Cloud (Firebase)</span><small id="authUid" class="ms-2 text-muted"></small>
+              <span class="badge rounded-pill text-bg-secondary" id="cloudStatus">Offline</span>
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-2">
+                Incolla la <strong>configurazione Firebase</strong> (JSON) per abilitare la sincronizzazione tra dispositivi.
+                Le prenotazioni sono archiviate in
+                <code>aziende/&lt;NomeAzienda&gt;/prenotazioni/&lt;YYYY-Www&gt;/utenti/...</code>
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-12">
+                  <textarea id="firebaseConfigJson" class="form-control" rows="4" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "..."
+}'></textarea>
+                </div>
+                <div class="col-auto mt-2 d-flex gap-2">
+                  <button id="saveFirebaseCfg" class="btn btn-outline-primary">Salva config</button>
+                  <button id="connectFirebase" class="btn btn-primary">Connetti</button>
+                  <button id="syncNow" class="btn btn-outline-secondary" disabled>Sincronizza ora</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Riepilogo Admin -->
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span>Riepilogo Settimanale Dipendenti</span>
+              <div class="d-flex gap-2">
+                <button id="refreshAdminSummary" class="btn btn-outline-primary btn-sm"><i class="fas fa-rotate"></i> Aggiorna</button>
+                <button id="exportExcel" class="btn btn-success btn-sm"><i class="fas fa-file-excel"></i> Esporta Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="text-muted mb-2">Mostra le prenotazioni per Lunedì–Venerdì di tutti i dipendenti (settimana corrente).</div>
+              <div id="adminSummary"><p class="text-muted">Nessuna prenotazione disponibile.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080;">
+    <div id="liveToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="toastBody">Operazione completata</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // ---- Preload Firebase config for your project (auto-injected) ----
+      try {
+        const existing = localStorage.getItem('firebaseConfig');
+        const desired = {"apiKey": "AIzaSyCVN6neIpnDtB-HJVLYSwbbxpG9f8xWBJo", "authDomain": "mensa-fiama-b0a5e-b0a5e.firebaseapp.com", "projectId": "mensa-fiama-b0a5e", "storageBucket": "mensa-fiama-b0a5e.firebasestorage.app", "messagingSenderId": "102926302523", "appId": "1:102926302523:web:48232df389666460fed768"};
+        if (!existing) {
+          localStorage.setItem('firebaseConfig', JSON.stringify(desired));
+        } else {
+          // overwrite if differs
+          const ex = JSON.parse(existing);
+          const same = JSON.stringify(ex) === JSON.stringify(desired);
+          if (!same) localStorage.setItem('firebaseConfig', JSON.stringify(desired));
+        }
+      } catch(e) { console.warn('Failed to preload firebaseConfig', e); }
+
+      // Helpers
+      const $ = (sel) => document.querySelector(sel);
+      const $all = (sel) => document.querySelectorAll(sel);
+
+      // ---- Week/Calendar utilities ----
+      const IT_DAYS = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+      function startOfISOWeek(d){
+        const date = new Date(d);
+        const day = (date.getDay() + 6) % 7; // Mon=0..Sun=6
+        date.setDate(date.getDate() - day);
+        date.setHours(0,0,0,0);
+        return date;
+      }
+      function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+      function fmtDate(d){ return d.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit'}); }
+      function fmtDateFull(d){ return d.toLocaleDateString('it-IT'); }
+      function isoDate(d){ const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
+      function isoWeekNumber(d){
+        const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        const dayNr = (target.getUTCDay() + 6) % 7;
+        target.setUTCDate(target.getUTCDate() - dayNr + 3);
+        const firstThursday = new Date(Date.UTC(target.getUTCFullYear(),0,4));
+        const firstDayNr = (firstThursday.getUTCDay() + 6) % 7;
+        firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNr + 3);
+        const weekNo = 1 + Math.round((target - firstThursday) / 604800000);
+        const year = target.getUTCFullYear();
+        return {year, week: weekNo};
+      }
+      function weekKeyFromDate(d){ const w=isoWeekNumber(d); return `${w.year}-W${String(w.week).padStart(2,'0')}`; }
+
+      let currentWeekStart = startOfISOWeek(new Date());
+      let selectedDateISO = null; // YYYY-MM-DD
+
+      function showToast(message, variant) {
+        if (variant === undefined) variant = 'success';
+        const el = document.getElementById('liveToast');
+        const body = document.getElementById('toastBody');
+        if (!el || !body || typeof bootstrap === 'undefined') return;
+        el.className = 'toast align-items-center text-bg-' + variant + ' border-0';
+        body.textContent = message;
+        new bootstrap.Toast(el).show();
+      }
+      // Override alert -> toast
+      window.alert = (m) => { try { showToast(String(m), 'danger'); } catch(e) { console && console.warn && console.warn(e); } };
+      function isValidWhats(num) { return /^\d{9,15}$/.test((num||'').trim()); }
+
+      // Stato
+      let dipendenti = JSON.parse(localStorage.getItem('dipendenti') || '{}');
+      let prenotazioni = JSON.parse(localStorage.getItem('prenotazioni') || '{}');
+      let restaurantWhatsApp = localStorage.getItem('restaurantWhatsApp') || '';
+      let companyName = localStorage.getItem('companyName') || '';
+      let currentUser = null;
+      let isAdmin = false;
+      let giornoSelezionato = null;
+
+      const giorni = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'];
+      const weekdayIndex = { 'Domenica':0,'Lunedì':1,'Martedì':2,'Mercoledì':3,'Giovedì':4,'Venerdì':5,'Sabato':6 };
+
+      function setCompanyBrand(){
+        const el = document.getElementById('companyBrand');
+        if (!el) return;
+        el.textContent = companyName ? ('Azienda: ' + companyName) : '';
+      }
+      setCompanyBrand(); // on load
+
+      function renderWeekDays(){
+        const week = [];
+        for(let i=0;i<5;i++){ // Mon-Fri
+          const d = addDays(currentWeekStart, i);
+          week.push(d);
+        }
+        // Update labels and data attributes
+        document.querySelectorAll('.day-btn').forEach(btn=>{
+          const name = btn.getAttribute('data-day');
+          const idx = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'].indexOf(name);
+          if (idx>=0){
+            const d = week[idx];
+            const span = btn.querySelector('.day-date[data-dayname="'+name+'"]');
+            if (span) span.textContent = fmtDate(d);
+            btn.dataset.date = isoDate(d);
+          }
+        });
+        const wk = isoWeekNumber(currentWeekStart);
+        const end = addDays(currentWeekStart,4);
+        const label = `Settimana ${wk.year}-W${String(wk.week).padStart(2,'0')} · ${fmtDate(currentWeekStart)} – ${fmtDate(end)}`;
+        const wl = document.getElementById('weekLabel'); if (wl) wl.textContent = label;
+      }
+      renderWeekDays();
+
+      // Week navigation
+      const prevW = document.getElementById('prevWeek');
+      const nextW = document.getElementById('nextWeek');
+      const thisW = document.getElementById('thisWeek');
+      if (prevW) prevW.addEventListener('click', ()=>{ currentWeekStart = addDays(currentWeekStart, -7); renderWeekDays(); renderWeeklySummary(); if (isAdmin) renderAdminSummary(); });
+      if (nextW) nextW.addEventListener('click', ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeekDays(); renderWeeklySummary(); if (isAdmin) renderAdminSummary(); });
+      if (thisW) thisW.addEventListener('click', ()=>{ currentWeekStart = startOfISOWeek(new Date()); renderWeekDays(); renderWeeklySummary(); if (isAdmin) renderAdminSummary(); });
+
+      // Admin inputs
+      const whatsInput = $('#whatsNumber');
+      const companyInput = $('#companyNameInput');
+      const saveSettingsBtn = $('#saveSettings');
+      const testBtn = $('#testWhats');
+
+      if (whatsInput) whatsInput.value = restaurantWhatsApp;
+      if (companyInput) companyInput.value = companyName;
+      if (testBtn) testBtn.disabled = !isValidWhats(restaurantWhatsApp);
+      if (whatsInput) whatsInput.addEventListener('input', () => {
+        const v = (whatsInput.value || '').replace(/\D/g, '');
+        if (testBtn) testBtn.disabled = !isValidWhats(v);
+      });
+
+      if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', () => {
+        const v = (whatsInput.value || '').replace(/\D/g, '');
+        if (!isValidWhats(v)) { showToast('Inserisci un numero valido in formato internazionale, es. 39333xxxxxxx', 'danger'); return; }
+        restaurantWhatsApp = v;
+        localStorage.setItem('restaurantWhatsApp', restaurantWhatsApp);
+        companyName = (companyInput.value || '').trim();
+        localStorage.setItem('companyName', companyName);
+        setCompanyBrand();
+        if (testBtn) testBtn.disabled = !isValidWhats(restaurantWhatsApp);
+        showToast('Impostazioni salvate');
+      });
+      if (testBtn) testBtn.addEventListener('click', () => {
+        if (!isValidWhats(restaurantWhatsApp)) { showToast('Configura prima un numero WhatsApp valido.', 'danger'); return; }
+        const today = new Date();
+        const msg = `TEST - ${companyName || 'Azienda'} - Messaggio di prova ${today.toLocaleDateString('it-IT')}.`;
+        const url = `https://wa.me/${restaurantWhatsApp}?text=${encodeURIComponent(msg)}`;
+        window.open(url, '_blank');
+        showToast('Apro WhatsApp per il messaggio di prova…', 'primary');
+      });
+
+      // PIN admin toggle
+      $('#showPin').addEventListener('click', (e) => { e.preventDefault(); $('#pinField').classList.remove('hidden'); });
+
+      // Registrazione
+      $('#registerBtn').addEventListener('click', () => {
+        const name = $('#registerName').value.trim();
+        const celiac = $('#celiacCheck').checked;
+        if (!name) { showToast('Inserisci il nome.', 'danger'); return; }
+        if (dipendenti[name]) { showToast('Esiste già un utente con questo nome.', 'danger'); return; }
+        dipendenti[name] = { nome: name, celiaco: celiac };
+        localStorage.setItem('dipendenti', JSON.stringify(dipendenti));
+        showToast('Registrazione completata');
+      });
+
+      // Login (admin PIN 22051976)
+      $('#loginBtn').addEventListener('click', () => {
+        const name = $('#loginName').value.trim();
+        const pin = $('#loginPin').value;
+        if (!name) { showToast('Inserisci il nome.', 'danger'); return; }
+        if (!dipendenti[name]) { showToast('Utente non registrato.', 'danger'); return; }
+        currentUser = name;
+        isAdmin = (pin === '22051976');
+        $('#authScreen').classList.add('hidden');
+        $('#appContainer').classList.remove('hidden');
+        $('#userInfo').textContent = `Utente: ${dipendenti[name].nome} (${isAdmin ? 'Amministratore' : 'Dipendente'})`;
+        setCompanyBrand();
+        if (isAdmin) {
+          renderAdminSummary();
+        }
+        renderWeeklySummary();
+      });
+
+      // Logout
+      // Reset selezioni manuale
+      document.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'resetSelezioni'){
+          document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('selected'));
+          const pizzaSel = document.getElementById('pizzaSelect'); if (pizzaSel) pizzaSel.disabled = true;
+          $('#riepilogoScelte').textContent = 'Nessuna';
+        }
+      });
+
+      $('#logoutBtn').addEventListener('click', () => {
+        currentUser = null; isAdmin = false; giornoSelezionato = null;
+        $('#appContainer').classList.add('hidden');
+        $('#authScreen').classList.remove('hidden');
+        $('#loginName').value=''; $('#loginPin').value=''; $('#pinField').classList.add('hidden');
+        $('#weeklySummary').innerHTML = '<p class="text-muted">Nessuna prenotazione salvata.</p>';
+      });
+
+      // Giorni
+      $all('.day-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          $all('.day-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          giornoSelezionato = btn.getAttribute('data-day');
+          selectedDateISO = btn.getAttribute('data-date');
+          const d = new Date(selectedDateISO);
+          $('#riepilogoGiorno').textContent = `${giornoSelezionato} ${fmtDateFull(d)}`;
+        });
+      });
+
+      function updateRiepilogo() {
+        const selPrimo = $('.menu-item[data-group="primo"].selected');
+        const selSecondo = $('.menu-item[data-group="secondo"].selected');
+        const selContorno = $('.menu-item[data-group="contorno"].selected');
+        const selUnico = $('.menu-item[data-group="unico"].selected');
+
+        let parts = [];
+        if (selUnico) {
+          const code = selUnico.getAttribute('data-code');
+          if (code === 'Q') parts.push(`${code} (Pizza: ${$('#pizzaSelect').value})`);
+          else parts.push(code);
+        } else {
+          if (selPrimo) parts.push(selPrimo.getAttribute('data-code'));
+          if (selSecondo) parts.push(selSecondo.getAttribute('data-code'));
+          if (selContorno) parts.push(selContorno.getAttribute('data-code'));
+        }
+        $('#riepilogoScelte').textContent = parts.length ? parts.join(', ') : 'Nessuna';
+      }
+
+      // Selezione piatti: esclusività
+      $all('.menu-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const group = item.getAttribute('data-group');
+          const code = item.getAttribute('data-code');
+          const isSelected = item.classList.contains('selected');
+
+
+          if (group === 'unico') {
+            if (isSelected) {
+              // Se clicco di nuovo sul piatto unico selezionato: lo tolgo e riabilito le altre scelte
+              item.classList.remove('selected');
+              $('#pizzaSelect').disabled = true;
+            } else {
+              // Seleziono un piatto unico: rimuovo altre selezioni e blocco gli altri gruppi
+              $all('.menu-item').forEach(el => el.classList.remove('selected'));
+              item.classList.add('selected');
+              $('#pizzaSelect').disabled = (code !== 'Q');
+            }
+          } else {
+            // Se c'è un piatto unico selezionato blocco la selezione degli altri
+            if (document.querySelector('.menu-item[data-group="unico"].selected')) return;
+            // altrimenti esclusività per gruppo
+            $all(`.menu-item[data-group="${group}"]`).forEach(el => el.classList.remove('selected'));
+            item.classList.toggle('selected', !isSelected);
+          }
+          updateRiepilogo();
+        });
+      });
+
+
+      // Carica una prenotazione nel selettore
+      function applySelectionFrom(p, dayLabel, isoDateStr){
+        // reset selezioni
+        document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('selected'));
+        // set pizza default
+        const pizzaSel = document.getElementById('pizzaSelect');
+        if (pizzaSel) pizzaSel.disabled = true;
+
+        if (p){
+          if (p.unico){
+            const unicoEl = document.querySelector(`.menu-item[data-group="unico"][data-code="${p.unico}"]`);
+            if (unicoEl){ unicoEl.classList.add('selected'); }
+            if (p.unico === 'Q' && pizzaSel){ pizzaSel.disabled = false; if (p.pizza) pizzaSel.value = p.pizza; }
+          } else {
+            if (p.primo){ const el = document.querySelector(`.menu-item[data-group="primo"][data-code="${p.primo}"]`); if (el) el.classList.add('selected'); }
+            if (p.secondo){ const el = document.querySelector(`.menu-item[data-group="secondo"][data-code="${p.secondo}"]`); if (el) el.classList.add('selected'); }
+            if (p.contorno){ const el = document.querySelector(`.menu-item[data-group="contorno"][data-code="${p.contorno}"]`); if (el) el.classList.add('selected'); }
+          }
+        }
+        giornoSelezionato = dayLabel;
+        selectedDateISO = isoDateStr;
+        $('#riepilogoGiorno').textContent = `${dayLabel} ${fmtDateFull(new Date(isoDateStr))}`;
+        // attiva bottone giorno corrispondente
+        document.querySelectorAll('.day-btn').forEach(btn => btn.classList.remove('active'));
+        const btn = Array.from(document.querySelectorAll('.day-btn')).find(b => b.getAttribute('data-day')===dayLabel);
+        if (btn) btn.classList.add('active');
+        // aggiorna riepilogo scelte
+        updateRiepilogo();
+        // scroll alla sezione menu
+        document.querySelector('#pills-dipendente .card:nth-of-type(2)')?.scrollIntoView({behavior:'smooth', block:'start'});
+      }
+
+      // Salvataggio
+      $('#salvaPrenotazione').addEventListener('click', () => {
+        if (!currentUser) { showToast('Devi effettuare il login.', 'danger'); return; }
+        if (!giornoSelezionato) { showToast('Seleziona un giorno.', 'danger'); return; }
+        const unico = document.querySelector('.menu-item[data-group="unico"].selected');
+        const primo = document.querySelector('.menu-item[data-group="primo"].selected');
+        const secondo = document.querySelector('.menu-item[data-group="secondo"].selected');
+        const contorno = document.querySelector('.menu-item[data-group="contorno"].selected');
+        if (!unico && (!primo || !secondo)) { showToast('Se non scegli un piatto unico, devi selezionare almeno un primo e un secondo.', 'danger'); return; }
+
+        if (!selectedDateISO){ showToast('Seleziona un giorno dalla settimana.', 'danger'); return; }
+        if (!prenotazioni[currentUser]) prenotazioni[currentUser] = {};
+        const wk = weekKeyFromDate(new Date(selectedDateISO));
+        if (!prenotazioni[currentUser][wk]) prenotazioni[currentUser][wk] = {};
+        prenotazioni[currentUser][wk][giornoSelezionato] = {
+          primo: primo ? primo.getAttribute('data-code') : null,
+          secondo: secondo ? secondo.getAttribute('data-code') : null,
+          contorno: contorno ? contorno.getAttribute('data-code') : null,
+          unico: unico ? unico.getAttribute('data-code') : null,
+          pizza: $('#pizzaSelect').disabled ? null : $('#pizzaSelect').value,
+          dataISO: selectedDateISO
+        };
+        localStorage.setItem('prenotazioni', JSON.stringify(prenotazioni));
+        showToast('Prenotazione salvata');
+        renderWeeklySummary();
+        if (isAdmin) renderAdminSummary();
+      });
+
+      // Cancellazione entro 08:30 con WhatsApp
+      function canCancelTodayFor(dayLabel) {
+        const today = new Date();
+        const nowMin = today.getHours()*60 + today.getMinutes();
+        const cutoff = 8*60 + 30;
+        // If a selected date exists for this day in current week, compare with that
+        const wk = weekKeyFromDate(currentWeekStart);
+        const p = (prenotazioni[currentUser]||{})[wk] && (prenotazioni[currentUser]||{})[wk][dayLabel];
+        if (p && p.dataISO){
+          const d = new Date(p.dataISO);
+          return (d.toDateString() === today.toDateString()) && (nowMin <= cutoff);
+        }
+        return (weekdayIndex[dayLabel] === today.getDay()) && (nowMin <= cutoff);
+      }
+      function formatDateIT(d){ const dd = String(d.getDate()).padStart(2,'0'); const mm = String(d.getMonth()+1).padStart(2,'0'); const yyyy = d.getFullYear(); return `${dd}/${mm}/${yyyy}`; }
+
+      function renderWeeklySummary() {
+        const container = $('#weeklySummary');
+        if (!currentUser) { container.innerHTML = '<p class="text-muted">Nessuna prenotazione salvata.</p>'; return; }
+        const wk = weekKeyFromDate(currentWeekStart);
+        const data = (prenotazioni[currentUser] || {})[wk] || {};
+        let rows = '';
+        giorni.forEach(g => {
+          const p = data[g];
+          const scelte = p ? (p.unico ? p.unico + (p.unico==='Q' && p.pizza ? ` (Pizza: ${p.pizza})` : '') : [p.primo,p.secondo,p.contorno].filter(Boolean).join(', ')) : '-';
+          const has = p ? '' : 'disabled';
+          const waDisabled = (!p || !canCancelTodayFor(g)) ? 'disabled' : '';
+          const editDisabled = (!p || !canCancelTodayFor(g)) ? 'disabled' : '';
+          const dataTxt = p && p.dataISO ? fmtDateFull(new Date(p.dataISO)) : '-';
+          rows += `<tr>
+            <td>${g}</td>
+            <td>${dataTxt}</td>
+            <td>${scelte || '-'}</td>
+            <td class="d-flex gap-2 flex-wrap">
+              <button class="btn btn-sm btn-primary edit-week" data-day="${g}" ${editDisabled} title="Modificabile solo fino alle 08:30 del giorno stesso">Modifica</button>
+              <button class="btn btn-sm btn-danger cancel-week" data-day="${g}" ${has}>Cancella</button>
+              <button class="btn btn-sm btn-outline-success cancel-week-wa" data-day="${g}" ${waDisabled}><i class="fab fa-whatsapp"></i> Cancella + WhatsApp</button>
+            </td>
+          </tr>`;
+        });
+        container.innerHTML = `<div class="table-responsive"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Giorno</th><th>Data</th><th>Scelte</th><th>Azioni</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+        container.querySelectorAll('.cancel-week').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.hasAttribute('disabled')) return;
+            const d = btn.getAttribute('data-day');
+            if (!prenotazioni[currentUser]) return;
+            const wk = weekKeyFromDate(currentWeekStart);
+            if (!prenotazioni[currentUser][wk]) return;
+            delete prenotazioni[currentUser][wk][d];
+            localStorage.setItem('prenotazioni', JSON.stringify(prenotazioni));
+            showToast('Prenotazione cancellata', 'primary');
+            renderWeeklySummary();
+            if (isAdmin) renderAdminSummary();
+          });
+        });
+
+
+        container.querySelectorAll('.edit-week').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.hasAttribute('disabled')) return;
+            const d = btn.getAttribute('data-day');
+            const wk = weekKeyFromDate(currentWeekStart);
+            const p = ((prenotazioni[currentUser]||{})[wk]||{})[d];
+            // calcola ISO date dal dataset o da p.dataISO
+            let iso = p && p.dataISO ? p.dataISO : null;
+            if (!iso){
+              // derive from currentWeekStart and index
+              const idx = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'].indexOf(d);
+              if (idx>=0){ iso = isoDate(addDays(currentWeekStart, idx)); }
+            }
+            if (!iso){ showToast('Data non trovata per la modifica.', 'danger'); return; }
+            applySelectionFrom(p, d, iso);
+            showToast('Modalità modifica attiva per ' + d, 'primary');
+          });
+        });
+
+        container.querySelectorAll('.cancel-week-wa').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.hasAttribute('disabled')) return;
+            const d = btn.getAttribute('data-day');
+            if (!canCancelTodayFor(d)) { showToast('La cancellazione WhatsApp è consentita solo fino alle 08:30 del giorno selezionato.', 'danger'); return; }
+            if (!restaurantWhatsApp) { showToast('Configura il numero WhatsApp del ristorante in Area Amministratore.', 'danger'); return; }
+            const wk = weekKeyFromDate(currentWeekStart);
+            const p = ((prenotazioni[currentUser]||{})[wk]||{})[d];
+            if (!p) return;
+            const today = new Date();
+            const msg = `Buongiorno, si comunica cancellazione pasto per l'azienda ${companyName || 'Azienda'}. Dipendente: ${dipendenti[currentUser].nome}. Data: ${formatDateIT(today)} (${d}). Scelte: ${p.unico ? (p.unico + (p.unico==='Q' && p.pizza ? ' - Pizza: '+p.pizza : '')) : [p.primo,p.secondo,p.contorno].filter(Boolean).join(', ')}.`;
+            delete prenotazioni[currentUser][wk][d];
+            localStorage.setItem('prenotazioni', JSON.stringify(prenotazioni));
+            renderWeeklySummary();
+            if (isAdmin) renderAdminSummary();
+            const url = `https://wa.me/${restaurantWhatsApp}?text=${encodeURIComponent(msg)}`;
+            window.open(url, '_blank');
+            showToast('Apro WhatsApp per inviare la cancellazione…', 'primary');
+          });
+        });
+      }
+
+      // Admin summary
+      function settimanaCompleta(dataU) { return giorni.every(g => dataU && dataU[g]); }
+      function formatEntry(p) {
+        if (!p) return '-';
+        if (p.unico) return p.unico + (p.unico==='Q' && p.pizza ? ` (${p.pizza})` : '');
+        const parts = [p.primo, p.secondo, p.contorno].filter(Boolean);
+        return parts.length ? parts.join(', ') : '-';
+      }
+      function renderAdminSummary() {
+        const container = $('#adminSummary');
+        const users = Object.keys(dipendenti);
+        if (!users.length) { container.innerHTML = '<p class="text-muted">Nessun dipendente registrato.</p>'; return; }
+        let header = '<tr><th>Dipendente</th>' + giorni.map(g=>`<th>${g}</th>`).join('') + '<th>Completo</th></tr>';
+        let body = users.map(u => {
+          const wk = weekKeyFromDate(currentWeekStart);
+          const dataU = (prenotazioni[u] || {})[wk] || {};
+          const cells = giorni.map(g => `<td>${formatEntry(dataU[g])}</td>`).join('');
+          const completo = settimanaCompleta(dataU) ? '<span class="badge bg-success">Sì</span>' : '<span class="badge bg-secondary">No</span>';
+          return `<tr><td>${dipendenti[u].nome}</td>${cells}<td>${completo}</td></tr>`;
+        }).join('');
+        container.innerHTML = `<div class="table-responsive"><table class="table table-striped table-bordered align-middle"><thead>${header}</thead><tbody>${body || '<tr><td colspan="7" class="text-center text-muted">Nessuna prenotazione disponibile.</td></tr>'}</tbody></table></div>`;
+      }
+      $('#refreshAdminSummary').addEventListener('click', renderAdminSummary);
+
+      // Export Excel
+      $('#exportExcel').addEventListener('click', () => {
+        const rows = [['Dipendente', ...giorni]];
+        Object.keys(dipendenti).forEach(u => {
+          const wk = weekKeyFromDate(currentWeekStart);
+          const dataU = (prenotazioni[u] || {})[wk] || {};
+          const row = [dipendenti[u].nome];
+          giorni.forEach(g => row.push(formatEntry(dataU[g])));
+          rows.push(row);
+        });
+        const wsDettaglio = XLSX.utils.aoa_to_sheet(rows);
+
+        const totals = {
+          primi: { A:0, B:0, L:0, P:0, gf: { A:0, B:0, L:0, P:0 } },
+          secondi: { E:0, F:0, L:0, P:0, gf: { E:0, F:0, L:0, P:0 } },
+          contorni: { G:0, H:0, gf: { G:0, H:0 } }
+        };
+        const unici = { S:0, T:0, gf: { S:0, T:0 } };
+        const pizzaFlavors = [
+          'MARGHERITA','MARINARA','NAPOLETANA','ROMANA','PROSCIUTTO COTTO','FUNGHI','PROSCIUTTO E FUNGHI','TONNO',
+          '4 FORMAGGI','4 STAGIONI','SALAMINO','CAPRICCIOSA','DIAVOLA','VEGETARIANA','VERDURE GRIGLIATE','PUGLIESE',
+          'WURSTEL','COTTO E SALAMINO','PATATINA','PATATINA E FUNGHI','PATATINA E SALAMINO','FUNGHI E SALAMINO'
+        ];
+        const pizzaCounts = pizzaFlavors.reduce((acc, f) => (acc[f]=0, acc), {});
+        const pizzaGF = pizzaFlavors.reduce((acc, f) => (acc[f]=0, acc), {});
+
+        Object.keys(dipendenti).forEach(u => {
+          const isGF = !!(dipendenti[u] && dipendenti[u].celiaco);
+          const wk = weekKeyFromDate(currentWeekStart);
+          const dataU = (prenotazioni[u] || {})[wk] || {};
+          giorni.forEach(g => {
+            const p = dataU[g];
+            if (!p) return;
+            if (p.unico) {
+              if (p.unico === 'S' || p.unico === 'T') {
+                unici[p.unico]++;
+                if (isGF) unici.gf[p.unico]++;
+              }
+              if (p.unico === 'Q' && p.pizza) {
+                if (pizzaCounts[p.pizza] !== undefined) {
+                  pizzaCounts[p.pizza]++;
+                  if (isGF) pizzaGF[p.pizza]++;
+                }
+              }
+              return; // unici non contano in primi/secondi/contorni
+            }
+            if (p.primo && totals.primi[p.primo] !== undefined) {
+              totals.primi[p.primo]++;
+              if (isGF) totals.primi.gf[p.primo]++;
+            }
+            if (p.secondo && totals.secondi[p.secondo] !== undefined) {
+              totals.secondi[p.secondo]++;
+              if (isGF) totals.secondi.gf[p.secondo]++;
+            }
+            if (p.contorno && totals.contorni[p.contorno] !== undefined) {
+              totals.contorni[p.contorno]++;
+              if (isGF) totals.contorni.gf[p.contorno]++;
+            }
+          });
+        });
+
+        function blockFor(title, letters, bag, opts={}) {
+          const header = [[title], [opts.col1 || 'Lettera','Totale','Senza Glutine']];
+          const body = letters.map(L => [L, (bag[L]||0), ((bag.gf && bag.gf[L])||0)]);
+          return header.concat(body).concat([[]]);
+        }
+
+        let totRows = []
+          .concat(blockFor('PRIMI', ['A','B','L','P'], totals.primi))
+          .concat([['Piatti Unici (conteggio sotto PRIMI)'], ['Lettera','Totale','Senza Glutine'], ['S', unici.S, unici.gf.S], ['T', unici.T, unici.gf.T], []])
+          .concat(blockFor('SECONDI', ['E','F','L','P'], totals.secondi))
+          .concat(blockFor('CONTORNI', ['G','H'], totals.contorni));
+
+        const pizzaRows = [['PIZZE (Q)'], ['Gusto','Totale','Senza Glutine']]
+          .concat(pizzaFlavors.map(f => [f, pizzaCounts[f] || 0, pizzaGF[f] || 0]))
+          .concat([[]]);
+        totRows = totRows.concat(pizzaRows);
+
+        const wsTotali = XLSX.utils.aoa_to_sheet(totRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsDettaglio, 'Prenotazioni');
+        XLSX.utils.book_append_sheet(wb, wsTotali, 'Totali');
+        XLSX.writeFile(wb, 'prenotazioni_settimana.xlsx');
+      });
+
+      // ---------- Firebase Cloud Sync Layer ----------
+      (function(){
+        let app=null, db=null, useCloud=false;
+        const cloudStatusEl = document.getElementById('cloudStatus');
+        const cfgTA = document.getElementById('firebaseConfigJson');
+        const btnSaveCfg = document.getElementById('saveFirebaseCfg');
+        const btnConnect = document.getElementById('connectFirebase');
+        const btnSync = document.getElementById('syncNow');
+
+        function setCloudStatus(txt,variant){
+          if (!cloudStatusEl) return;
+          cloudStatusEl.textContent = txt;
+          cloudStatusEl.className = 'badge rounded-pill ' + (variant||'text-bg-secondary');
+        }
+        function getCompany(){ try { return (localStorage.getItem('companyName')||'').trim() || 'default'; } catch(e){ return 'default'; } }
+        function getCfg(){ try { return JSON.parse(localStorage.getItem('firebaseConfig')||'{}'); } catch(e){ return {}; } }
+        function saveCfg(obj){ localStorage.setItem('firebaseConfig', JSON.stringify(obj||{})); }
+
+        // ISO week key
+        function weekKey(date){
+          const d = date ? new Date(date) : new Date();
+          const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+          const dayNr = (target.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+          target.setUTCDate(target.getUTCDate() - dayNr + 3);
+          const firstThursday = new Date(Date.UTC(target.getUTCFullYear(),0,4));
+          const firstDayNr = (firstThursday.getUTCDay() + 6) % 7;
+          firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNr + 3);
+          const weekNo = 1 + Math.round((target - firstThursday) / 604800000);
+          const year = target.getUTCFullYear();
+          return `${year}-W${String(weekNo).padStart(2,'0')}`;
+        }
+
+        function dipCollection(){ return db.collection('aziende').doc(getCompany()).collection('dipendenti'); }
+        function prenCollection(){ return db.collection('aziende').doc(getCompany()).collection('prenotazioni').doc(weekKey()).collection('utenti'); }
+        function safeId(name){ return encodeURIComponent(String(name||'').toLowerCase().trim()); }
+
+        // Precarica cfg
+        const initialCfg = getCfg();
+        if (cfgTA && Object.keys(initialCfg).length){ cfgTA.value = JSON.stringify(initialCfg, null, 2); }
+
+        if (btnSaveCfg) btnSaveCfg.addEventListener('click', ()=>{
+          try{
+            const obj = JSON.parse(cfgTA.value||'{}');
+            if (!obj.projectId) { showToast('projectId mancante nella config','danger'); return; }
+            saveCfg(obj);
+            showToast('Config Firebase salvata','success');
+          }catch(e){ showToast('Config non valida: ' + e.message,'danger'); }
+        });
+
+        async function connect(){
+          const cfg = getCfg();
+          if (!cfg || !cfg.projectId){ showToast('Prima salva una config valida','danger'); return; }
+          if (!window.firebase || !firebase.initializeApp){ showToast('SDK Firebase non caricato','danger'); return; }
+          try{
+            app = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
+            db = firebase.firestore();
+            useCloud = true;
+            setCloudStatus('Online','text-bg-success');
+            if (btnSync) btnSync.disabled = false;
+            try{ const u = firebase.auth && firebase.auth().currentUser; document.getElementById('authUid').textContent = u ? `(uid: ${u.uid.slice(0,8)}…)` : ''; }catch(e){}
+            await pullAll();
+            showToast('Connesso a Firestore e sincronizzato','success');
+            try { if (typeof renderAdminSummary==='function') renderAdminSummary(); } catch(e){}
+            try { if (typeof renderWeeklySummary==='function') renderWeeklySummary(); } catch(e){}
+          }catch(e){
+            console.error(e);
+            setCloudStatus('Errore','text-bg-danger');
+            showToast('Connessione fallita: '+ e.message,'danger');
+          }
+        }
+        if (btnConnect) btnConnect.addEventListener('click', connect);
+
+        async function pushDipendenti(){
+          if (!useCloud) return;
+          const raw = localStorage.getItem('dipendenti');
+          const dip = raw ? JSON.parse(raw) : {};
+          const batch = db.batch();
+          Object.keys(dip).forEach(k=>{
+            const dref = dipCollection().doc(safeId(k));
+            batch.set(dref, { nome: dip[k].nome||k, celiaco: !!dip[k].celiaco }, { merge:true });
+          });
+          await batch.commit();
+        }
+        async function pushPrenotazioni(){
+          if (!useCloud) return;
+          const raw = localStorage.getItem('prenotazioni');
+          const pr = raw ? JSON.parse(raw) : {};
+          const batch = db.batch();
+          const wk = weekKey();
+          Object.keys(pr).forEach(user=>{
+            const pref = prenCollection().doc(safeId(user));
+            const giorni = (pr[user] && pr[user][wk]) ? pr[user][wk] : (pr[user]||{});
+            batch.set(pref, { utente: user, giorni }, { merge:true });
+          });
+          await batch.commit();
+        }
+        async function pushAll(){ await pushDipendenti(); await pushPrenotazioni(); }
+        if (btnSync) btnSync.addEventListener('click', ()=>{ pushAll().then(()=>showToast('Sincronizzazione completata')).catch(e=>showToast('Errore sync: '+e.message,'danger')); });
+
+        async function pullAll(){
+          if (!useCloud) return;
+          const dsnap = await dipCollection().get();
+          const dipObj = {};
+          dsnap.forEach(doc=>{ const d=doc.data(); if (d && d.nome) dipObj[d.nome]= { nome:d.nome, celiaco:!!d.celiaco }; });
+          localStorage.setItem('dipendenti', JSON.stringify(dipObj));
+          const psnap = await prenCollection().get();
+          const prObj = {};
+          const wk = weekKey();
+          psnap.forEach(doc=>{ const d=doc.data(); if (d && d.utente){ prObj[d.utente] = {}; prObj[d.utente][wk] = d.giorni || {}; }});
+          localStorage.setItem('prenotazioni', JSON.stringify(prObj));
+          dipendenti = dipObj;
+          prenotazioni = prObj;
+        }
+
+        // Riflette su cloud quando salviamo localmente
+        try{
+          const _set = localStorage.setItem.bind(localStorage);
+          localStorage.setItem = function(key, val){
+            _set(key,val);
+            if (!useCloud) return;
+            if (key==='dipendenti') pushDipendenti().catch(console.error);
+            if (key==='prenotazioni') pushPrenotazioni().catch(console.error);
+          };
+        }catch(e){ console.warn('Patch localStorage fallita', e); }
+
+        if (Object.keys(initialCfg).length){ connect(); }
+        // Auto-connect if config exists
+        try {
+          const cfgAuto = getCfg();
+          if (cfgAuto && cfgAuto.projectId) { connect(); }
+        } catch(e){ console.warn('Auto-connect failed', e); }
+
+      })();
+    });
+  </script>
+</body>
+</html>
